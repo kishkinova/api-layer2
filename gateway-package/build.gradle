@@ -4,89 +4,36 @@ ext {
 }
 
 configurations {
+    gatewayServiceJar
     zip
 }
-def resourceDir = 'src/main/resources/'
 
-task packageApiGateway(type: Zip) {
+dependencies {
+    gatewayServiceJar(project(path: ":gateway-service", configuration: "bootArchives"))
+}
+
+task packageGateway(type: Zip) {
     archiveFileName = artifactName + pullNo + ".zip"
     includeEmptyDirs = true
+    def resourceDir = 'src/main/resources/'
 
     into('/') {
-        from "$buildDir/convert/manifest.yaml"
+        from "$resourceDir/manifest.yaml"
         from "../schemas/gateway-schema.json"
     }
 
     into('bin/') {
-        from "$resourceDir/bin/gateway-service.jar"
+        from configurations.gatewayServiceJar
         from "$resourceDir/bin/start.sh"
         from "$resourceDir/bin/validate.sh"
     }
 }
 
-task downloadFile {
-    doLast {
-        // Specify the URL of the file to download
-        def fileURL = 'https://zowe.jfrog.io/artifactory/libs-release/org/zowe/apiml/gateway-fat-jar/2.14.6/gateway-fat-jar-2.14.6-application.jar'
-
-        RegularFile gatewayJar = layout.projectDirectory.file("src/main/resources/bin/gateway-service.jar")
-
-        // Set the destination directory and file name
-        def destination = gatewayJar.asFile
-        if (!destination.exists()) {
-            // Make sure the directory exists
-            destination.parentFile.mkdirs()
-
-            // Download the file
-            new URL(fileURL).withInputStream { i ->
-                destination.withOutputStream {
-                    it << i
-                }
-            }
-            println "Downloaded file to ${destination.absolutePath}"
-        } else {
-            println "File already exists ${destination.absolutePath}"
-        }
-    }
-}
-
-packageApiGateway.dependsOn downloadFile
-
-// save build information to manifest
-packageApiGateway.doFirst {
-    String manifest = file('src/main/resources/manifest.yaml').text
-
-    def getCommitHash = 'git rev-parse --verify HEAD'.execute()
-    def commit_hash = new ByteArrayOutputStream()
-    def command_err = new ByteArrayOutputStream()
-    getCommitHash.consumeProcessOutput(commit_hash, command_err)
-    getCommitHash.waitForOrKill(1000)
-
-    manifest = manifest.replaceAll("\\{\\{build.branch\\}\\}", System.getenv("BRANCH_NAME") ?: "")
-        .replaceAll("\\{\\{build.number\\}\\}", System.getenv("BUILD_NUMBER") ?: "")
-        .replaceAll("\\{\\{build.commitHash\\}\\}", commit_hash.toString().trim())
-        .replaceAll("\\{\\{build.timestamp\\}\\}", (new Date()).getTime().toString())
-
-    Provider<Directory> output = layout.buildDirectory.dir("convert")
-    def scriptOutputDir = output.get().asFile
-    if (!scriptOutputDir.exists()) {
-        scriptOutputDir.mkdirs()
-    }
-
-    Provider<RegularFile> manifestOutput = layout.buildDirectory.file("convert/manifest.yaml")
-    File convertedManifest = manifestOutput.get().asFile
-    if (convertedManifest.exists()) {
-        convertedManifest.delete()
-    }
-    convertedManifest.createNewFile()
-    convertedManifest.write(manifest)
-}
-
-jar.dependsOn(packageApiGateway)
-build.dependsOn(packageApiGateway)
+jar.dependsOn(packageGateway)
+build.dependsOn(packageGateway)
 
 artifacts {
-    zip packageApiGateway
+    zip packageGateway
 }
 
 publishing {
